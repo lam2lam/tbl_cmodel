@@ -99,23 +99,4 @@ This rule applies independently to C1/p and C2/q.
 For recp, m=7 so Xl has only 16 bits.  Xl can be shifted left 1 bit before feeding the squarer, and the C2*Xl^2 term shifted right 2 bits — equivalent to `sqr_prec = 17`.  Try this when tuning recp parameters.
 
 ### Octave / minimax vs CModel
-
-The octave script follows the paper: it fits `c0 + c1*(Xl/2^23) + c2*(Xl/2^23)²` (i.e. in terms of X2 = Xl/2^23) using minimax, then quantizes:
-
-- `C0 = round(c0 × 2^t)`
-- `C1 = round(c1 × 2^p)`
-- `C2 = round(c2 × 2^q)`
-
-(Equivalently, if fitting directly in Xl-space with coefficients c0′, c1′, c2′: `C0 = round(c0′ × 2^t)`, `C1 = round(c1′ × 2^(p+23))`, `C2 = round(c2′ × 2^(q+46))`. The two formulations are the same; the code uses the X2-space version.)
-
 sqr_prec is a CModel concept only — it is NOT involved in the minimax phase.  The paper's maple script does not reference sqr_prec.
-
-### Paper Section 3.4.1 — 3-pass enhanced minimax
-
-The Pineiro 2005 paper describes a 3-pass algorithm that compensates for the error introduced by rounding coefficients to finite wordlengths:
-
-1. **Pass 1**: Unrestricted minimax → (a₀, a₁, a₂)
-2. **Pass 2**: Quantize a₁ to p bits → C₁.  With C₁ fixed, re-run minimax to find new a₀′, a₂′.  Quantize a₂′ to q bits → C₂.
-3. **Pass 3**: With C₁ and C₂ both fixed, find the best constant a₀″ (the mid-point of the error range).  Quantize a₀″ to t bits → C₀.
-
-The octave script should implement this 3-pass approach rather than quantising all three coefficients in a single step.
