@@ -7,49 +7,106 @@ pow2 range is 0 <= x < 1
 The first phase of the project, would be to generate initial tables
 According to the paper a-highperformance-areaefficient-multifunction-interpolator.pdf / pineiro2005.pdf, using the maple tool, that can approximate the respective function in a quadratic equations, in segments, using minimax algorithm.
 However, maple was a propriatery tool, instead please use GNU octave to implement the algo.
-(Please create a README to help user to setup octave and their required packages
-In ubuntu, sudo apt update ; sudo apt install octave ; sudo apt install octave-optim  (or whatever package necesary) )
+***Very important*** Please read the papers.  Follow their maple script.  If you can't read the paper, install whatever tools you needs.  The closer you start with, the less tweaks you'd need later =)
+Side-quest: Please create a README to help user to setup octave and their required packages
+In ubuntu, sudo apt update ; sudo apt install octave ; sudo apt install octave-optim  (or whatever package necesary) 
+
 The script should generate the 7 tables, named <func_name>.txt, and it should be wrapped by a script to generates the tables in parallel.  
 Within the .txt files, there are a few lines of meta data.  The first line is m,t,p,q,sqr_prec,t_bias,clear_lsb,rounding.  
 2^m = number of entries of the respective table, would also equal to the number of bits of zeros the Xl factor contains
 t = number of fractional bits on the C0 term
 p = number of fractional bits on the C1 term
 q = number of fractional bits on the C2 term
-sqr_prec = the "chop off" point for the Xl^2 term (used in Cmodel later)
+sqr_prec = the "chop off" point for the Xl^2 term (used in Cmodel later, should not be related to octave scripts)
 t_bias = fractional bits for the "per function bias" (used in Cmodel later)
 clear_lsb = 1 to clear sum LSB (sum &= ~1ULL) before float conversion (used in CModel later)
 rounding = 0 for truncation only, 1 for nearest/ties-toward-zero (used in CModel later)
 The .txt files are prone to change later, so please refer to the meta data instead of storing it as constants
-The second line of the sign of the C0/C1/C2 columns respectively, and later the cofficients should be stored in their absolute value
+The second line of the sign of the C0/C1/C2 columns respectively, and later the cofficients should be stored in their absolute value.  Feel free to use +/- or 1/-1.  They should be comma separated too.
 The remaining lines would be the table itself
 An optional last line contains the per-function bias (integer).
-          m,t,p,q,sqr_prec,t_bias,clear_lsb,rounding initially was
-recp:     7,26,16,10,15,34,0,1
-log2:     6,26,16,10,15,34,0,1
-pow2:     6,26,16,10,15,34,0,1
-sqrt:     6,26,16,10,15,34,0,1
-sqrt_2x:  6,26,16,10,15,34,0,1
-rsqrt:    6,26,17,10,15,34,0,1
-rsqrt_2x: 6,26,17,10,15,34,0,1
+The initial `m,t,p,q,sqr_prec,t_bias,clear_lsb,rounding` values:
+
+| Function  | m | t  | p  | q  | sqr_prec | t_bias | clear_lsb | rounding |
+|-----------|---|---|----|----|-----|----------|--------|-----------|----------|
+| recp      | 7 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| log2      | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| pow2      | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| sqrt      | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| sqrt_2x   | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| rsqrt     | 6 | 26 | 17 | 10 | 15       | 34     | 0         | 1        |
+| rsqrt_2x  | 6 | 26 | 17 | 10 | 15       | 34     | 0         | 1        |
 
 The second phase of the project, would be to generate the actual cmodel
 The CModel would perform the following algo:
 Scan through ieee mantissa = 0..2^23-1, 
-0. If mantissa == 0,(except pow2, == 1.0) , return well-known constant: log2->0.0f, sqrt/rsqrt/recp->1.0f.  (sqrt_2x/rsqrt_2x are NOT shortcut since f(1) != 1.).  for pow2, mantissa = 0, the output should be 1.0.  
+0. If mantissa == 0,(except pow2) , return well-known constant: log2->0.0f, sqrt/rsqrt/recp->1.0f.  (sqrt_2x/rsqrt_2x are NOT shortcut since f(1) != 1.).  for pow2, when mantissa = 0, the float is 0.0 output should be therefore 1.0.  
 1. Split the mantissa part into Xh and Xl.  Namely the msb m bits(excluding the hidden 1) would be Xh and the rest bits Xl.  Lookup the respective C0,C1,C2 from the .txt files according to Xh.
 2. derrive the fixp(fractional bits) of the respective function, max(t_bias, t, 23+p, 12+sqr_prec+q).  Then every term, would be shifted against it, namely, (C0 << (fixp-t)) + ((C1*Xl)<<(fixp-(p+23))) + ((C2*sqr(Xl,sqr_prec))<<(fixp-(q+12+sqr_prec)))
-3. Add per-function bias: sum += (bias << (fixp - t_bias)) if bias was avialable
+3. Add per-function bias: sum += (bias << (fixp - t_bias)) if bias was available
 4. If clear_lsb is set, clear the sum LSB: sum &= ~1ULL.  
 5. The result would then be normalized and rounded, if rounding == 1.  When the result was a tie, round towards zero.
-6. For functions with rounding = 0, the bits beyong 2^-23 would simply be dropped (truncation)
-The model for sqr was provided in sqr_model.c
+6. For functions with rounding = 0, the bits beyond 2^-23 would simply be dropped (truncation)
+The model for sqr(Xl,sqr_prec) was provided in sqr_model.c
 
 Phase 3 of the project was to search for an exact match
 First would be trying to tweak the coefficients, e.g. +-20 for C0, +-4 for C1/C2, such that it fits against the reference data from the .bin more
-Initially when there are no files with _fixed, the function generated by octave <func_name>.txt should be used.  Afterwards, once the <func_name>_fixed.txt was avaiable, the fixed file should be used.  Notice that <func_name>_fixed.txt might contain the extra line that is used to store the per function bias value.  If that's avaiable, the search algo should include the bias into the computation.
-Perform this search by the multi-core (all of the cores avaialable to the system) manner.  The parallelism might be per function, but also maybe per segments or even per search step.  The search of a candidate can safely stop when the error count was more than 10% of the segment.  The fixed segments should be saved to the respective new file, named with the fixed suffix.  i.e. <func>.txt -> <func>_fixed.txt
-Second step would be the final push to an accurate model.  From the paper, there was a per function bias, that one can search between 0 to 2^(t_bias-t)-1.  Similarly, please utilize the multi-core CPU for this search.  The per function bias should be placed at the last line of the _fixed.txt file.
-If it's still not 100%, we can reiterate coefficient tweaks, and then bias, for one more time.
-And if the accuracy, was end up at low score < 80%, then most likely it was due to the fact that the p/q was not setup correctly.  You can scan for the msb of the generated table's C1/C2.  Say q = 10, while the whole columns' value even exceeded 511, then it means the msb of the function was 0.  One can instead extend q to a larger value(and there might be more than 1 zeros, try from small to large), since in hardware, a number with 11 bits while msb = 0 , can be computed with 10 bit multiplier with a shift right before adding them together with other C1/C0 terms.  Same for p.  A special case on recp, was that notice that m=7, and hence Xl has 16 bits only.  So one can imagine by shifting left it 1 bit to feed to sqr unit, and shifting right 2 bits for the C2*Xl^2 term, this would be the same as sqr_prec = 17.  So for recp, you can try this option.  t_bias could be widened, up to the max(t,p+23, q+12+sqr_prec) <- this is the other terms largest precision.  For every trial, change the octave script, and regenerate that particular <func_name>.txt.  Remove the <func_name>_fixed.txt, and redo the coef_fix, bias sequence above.  
+Initially when there are no files with _fixed suffix, the function generated by octave <func_name>.txt should be used.  Afterwards, once the <func_name>_fixed.txt was available, the fixed file should be used.  Notice that <func_name>_fixed.txt might contain the extra line that is used to store the per function bias value.  If that's available, the search algo should include the bias into the computation.
+Perform this search by the multi-core (all of the cores available to the system) manner.  The parallelism might be per function, but also maybe per segments or even per search step.  The search of a candidate can safely stop when the error count was more than 10% of the segment.  The fixed segments should be saved to the respective new file, named with the fixed suffix.  i.e. <func>.txt -> <func>_fixed.txt
+Second step would be the final push to an accurate model.  From the paper, there was a per function bias, that one can search between 0 to 2^(t_bias-t)-1.  Similarly, please utilize the multi-core CPU for this search.  (e.g. across different segments) The per function bias should be placed at the last line of the _fixed.txt file.
+*** below could be done on individual scripts, e.g. search_recp.sh
+If it's still not 100%, we can reiterate coefficient search, and then bias search, for one more time. (2 times at most)
+And if the accuracy, ended up at low score < 80%, then most likely it was due to the fact that the p/q was not setup correctly.  You can scan for the msb of the generated table's C1/C2.  Say q = 10, while the whole columns' value even exceeded 511, then it means the msb of the function was 0.  One can instead extend q to a larger value(and there might be more than 1 zeros, try from small to large), since in hardware, a number with 11 bits while msb = 0 , can be computed with 10 bit multiplier with a shift right before adding them together with other C1/C0 terms.  Same for p.  A special case on recp, was that notice that m=7, and hence Xl has 16 bits only.  So one can imagine by shifting left it 1 bit to feed to sqr unit, and shifting right 2 bits for the C2*Xl^2 term, this would be the same as sqr_prec = 17.  So for recp, you can try this option.  t_bias could be widened, up to the max(t,p+23, q+12+sqr_prec) <- this is the other terms largest precision.  For every trial, change the octave script, and regenerate that particular <func_name>.txt.  Remove the <func_name>_fixed.txt, and redo the coef_fix, bias sequence above.  
 Once we're at the > 95 % zone, please try with the rounding / truncation options
 Log the table's config (t,p,q,sqr_prec,t_bias,lsb_clear,rounding) as you're making progress on accuracy
+
+## Clarifications
+
+### Required file: sqr_model.c
+
+The hardware squarer is a bit-interleaving partial-product accumulator (not a simple `Xl*Xl >> sqr_prec`).  The model is in `sqr_model.c` / `sqr_model.h`.  This file MUST be checked in — it is a dependency of both the cmodel and the search.
+
+### The .txt / _fixed.txt file format
+
+- Line 1: metadata, comma-separated: `m,t,p,q,sqr_prec,t_bias,clear_lsb,rounding`
+- Line 2: column signs, comma-separated: `+,-,+` (or space-separated `1 -1 1` — both should be accepted)
+- Data lines: coefficient values, comma-separated or space-separated: `C0,C1,C2`
+- Optional last line: per-function bias integer (single value)
+
+### When you can extend p or q (the "MSB" rule)
+
+Each coefficient column (C1, C2) is stored with a fixed number of fractional bits (p or q).  In hardware these bits feed a multiplier of the same width.
+
+- If the **maximum absolute value** in the column is **less than 2^(k-1)** (i.e. the MSB of the stored integer is 0), then the multiplier's top bit is wasted.  You can extend k (use more fractional bits) without widening the hardware multiplier — the compiler/hardware right-shifts the product to compensate.
+
+- If the max value **exceeds 2^(k-1)** (MSB is 1), the multiplier width is fully utilised and you cannot extend k further.
+
+**Example**: q=10 → C2 max = 1023.  If the largest |C2| in the table is ≤ 511, the MSB (bit 9, value 512) is 0 → you CAN extend q.  If the largest |C2| > 511, the MSB is being used → extending q further requires a wider multiplier.
+
+This rule applies independently to C1/p and C2/q.
+
+### recp special case: sqr_prec = 17
+
+For recp, m=7 so Xl has only 16 bits.  Xl can be shifted left 1 bit before feeding the squarer, and the C2*Xl^2 term shifted right 2 bits — equivalent to `sqr_prec = 17`.  Try this when tuning recp parameters.
+
+### Octave / minimax vs CModel
+
+The octave script follows the paper: it fits `c0 + c1*(Xl/2^23) + c2*(Xl/2^23)²` (i.e. in terms of X2 = Xl/2^23) using minimax, then quantizes:
+
+- `C0 = round(c0 × 2^t)`
+- `C1 = round(c1 × 2^p)`
+- `C2 = round(c2 × 2^q)`
+
+(Equivalently, if fitting directly in Xl-space with coefficients c0′, c1′, c2′: C0 = round(c0′ × 2^t), C1 = round(c1′ × 2^(p+23)), C2 = round(c2′ × 2^(q+46)). The two formulations are the same; the code uses the X2-space version.)
+
+sqr_prec is a CModel concept only — it is NOT involved in the minimax phase.  The paper's maple script does not reference sqr_prec.
+
+### Paper Section 3.4.1 — 3-pass enhanced minimax
+
+The Pineiro 2005 paper describes a 3-pass algorithm that compensates for the error introduced by rounding coefficients to finite wordlengths:
+
+1. **Pass 1**: Unrestricted minimax → (a₀, a₁, a₂)
+2. **Pass 2**: Quantize a₁ to p bits → C₁.  With C₁ fixed, re-run minimax to find new a₀′, a₂′.  Quantize a₂′ to q bits → C₂.
+3. **Pass 3**: With C₁ and C₂ both fixed, find the best constant a₀″ (the mid-point of the error range).  Quantize a₀″ to t bits → C₀.
+
+The octave script should implement this 3-pass approach rather than quantising all three coefficients in a single step.
