@@ -34,8 +34,8 @@ The initial `m,t,p,q,sqr_prec,t_bias,clear_lsb,rounding` values:
 | pow2      | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
 | sqrt      | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
 | sqrt_2x   | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
-| rsqrt     | 6 | 26 | 17 | 10 | 15       | 34     | 0         | 1        |
-| rsqrt_2x  | 6 | 26 | 17 | 10 | 15       | 34     | 0         | 1        |
+| rsqrt     | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
+| rsqrt_2x  | 6 | 26 | 16 | 10 | 15       | 34     | 0         | 1        |
 
 The second phase of the project, would be to generate the actual cmodel
 The CModel would perform the following algo:
